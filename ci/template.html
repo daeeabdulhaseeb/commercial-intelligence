@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Commercial Intelligence</title>
+<meta name="description" content="Pipeline, accounts, SE scorecard and receivables dashboards with a win-probability model, Monte Carlo forecast, churn model and live stress test. Synthetic demo data.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Commercial Intelligence: pipeline, predictive forecast &amp; stress test">
+<meta property="og:description" content="Win-probability model, Monte Carlo award forecast with backtests, churn model, next-best actions and a live stress test on a simulated B2B sales organisation.">
+<meta property="og:url" content="https://daeeabdulhaseeb.github.io/commercial-intelligence/">
+<meta property="og:image" content="https://daeeabdulhaseeb.github.io/commercial-intelligence/img/overview.jpg">
+<meta name="twitter:card" content="summary_large_image">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 :root{--bg:#f6f7f9;--card:#fff;--ink:#14171c;--mute:#5b6472;--line:#e4e7ec;--acc:#2554c7;--acc2:#0f8a7e;--warn:#c27803;--bad:#c2362b;--good:#1f7a4d;--chip:#eef2fb}
@@ -206,36 +213,42 @@ R.predict=()=>{const p=D.predictive,w=p.win;
 // ------------------------------------------------------------------ Monte Carlo (stress test)
 function rng(seed){return function(){seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
 function lnorm(r,sd){let u=0,v=0;while(u===0)u=r();while(v===0)v=r();return Math.exp(-sd*sd/2+sd*Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v))}
-const BASE={win:0,topN:0,delay:0,nb:0,pay:0,lose:0,shock:0.15};
+const BASE={win:0,nb:0,seg:'all',topN:0,delay:0,lose:0,pay:0,shock:0.15,nbMonths:null};
 function pct(a,q){const s=a.slice().sort((x,y)=>x-y);return s[Math.min(s.length-1,Math.floor(q*s.length))]}
-function runSim(sc,sims=2000){const S=D.stress,H=S.months.length,r=rng(42);
-  const q=S.q, T=S.timing, cum={};for(const k in T){let c=0;cum[k]=T[k].map(x=>c+=x)}
-  const big=q.map((x,i)=>[x[0],i]).sort((a,b)=>b[0]-a[0]).slice(0,sc.lose).map(x=>x[1]);const lost=new Set(big);
-  const res=[];const tots=[];const yr=[];const yl=Math.min(H,S.months_left_in_year);
-  for(let s=0;s<sims;s++){const a=new Float64Array(H);const f=lnorm(r,sc.shock);
-    for(let i=0;i<q.length;i++){const x=q[i];if(lost.has(i))continue;const p=Math.min(.99,x[1]*(1+sc.win)*f);
-      if(r()<p){const u=r(),c=cum[x[2]];let k=0;while(k<H-1&&u>c[k])k++;if(x[3]<=sc.topN)k+=sc.delay;if(k<H)a[k]+=x[0]}}
-    for(let k=0;k<H;k++){a[k]+=S.rest[k]*(1+sc.win)*f+S.nb[k]*(1+sc.nb)*f*lnorm(r,0.2)}
-    res.push(a);let t=0,y=0;for(let k=0;k<H;k++){t+=a[k];if(k<yl)y+=a[k]}tots.push(t);yr.push(y)}
+function segHit(sc,ti,gi){const S=D.stress;if(!sc.seg||sc.seg==='all')return true;const [k,v]=sc.seg.split(':');return k==='team'?S.teams[ti]===v:S.groups[gi]===v}
+function nbMult(sc,k){const m=D.stress.months[k];return sc.nbMonths&&sc.nbMonths[m]!=null?sc.nbMonths[m]:1}
+function runSim(sc,sims=2000){const S=D.stress,H=S.months.length,r=rng(42),T=S.teams;
+  const q=S.q,cum={};for(const k in S.timing){let c=0;cum[k]=S.timing[k].map(x=>c+=x)}
+  const lost=new Set(q.map((x,i)=>[x[0],i]).sort((a,b)=>b[0]-a[0]).slice(0,sc.lose).map(x=>x[1]));
+  const yl=Math.min(H,S.months_left_in_year);const res=[],tots=[],yr=[],byT=T.map(()=>[]);
+  for(let s=0;s<sims;s++){const a=new Float64Array(H),tt=new Float64Array(T.length);const f=lnorm(r,sc.shock);
+    for(let i=0;i<q.length;i++){const x=q[i];if(lost.has(i))continue;const hit=segHit(sc,x[4],x[5]);
+      const p=Math.min(.99,x[1]*(hit?1+sc.win:1)*f);
+      if(r()<p){const u=r(),c=cum[x[2]];let k=0;while(k<H-1&&u>c[k])k++;if(x[3]<=sc.topN)k+=sc.delay;if(k<H){a[k]+=x[0];if(x[4]>=0)tt[x[4]]+=x[0]}}}
+    T.forEach((t,ti)=>{const th=!sc.seg||sc.seg==='all'||sc.seg==='team:'+t;const rs=S.rest_team[t],nb=S.nb_team[t];
+      for(let k=0;k<H;k++){const v=rs[k]*(th?1+sc.win:1)*f+nb[k]*(th?1+sc.nb:1)*nbMult(sc,k)*f*lnorm(r,0.2);a[k]+=v;tt[ti]+=v}});
+    res.push(a);let t=0,y=0;for(let k=0;k<H;k++){t+=a[k];if(k<yl)y+=a[k]}tots.push(t);yr.push(y);T.forEach((_,ti)=>byT[ti].push(tt[ti]))}
   const out={p10:[],p50:[],p90:[],mean:[]};for(let k=0;k<H;k++){const col=res.map(a=>a[k]);out.p10.push(pct(col,.1));out.p50.push(pct(col,.5));out.p90.push(pct(col,.9));out.mean.push(col.reduce((x,y)=>x+y,0)/sims)}
-  out.tot={p10:pct(tots,.1),p50:pct(tots,.5),p90:pct(tots,.9)};
+  out.tot={p10:pct(tots,.1),p50:pct(tots,.5),p90:pct(tots,.9)};out.team=T.map((t,ti)=>pct(byT[ti],.5));
   out.hit=S.remaining_year>0?yr.filter(v=>v>=S.remaining_year).length/sims:null;out.yr50=pct(yr,.5);
-  // invoicing & collections on the mean award path
-  if(S.inv_lag){const inv=new Array(H).fill(0);for(let k=0;k<H;k++)for(let j=0;j+k<H;j++)inv[k+j]+=out.mean[k]*S.inv_lag[j];
-    for(let k=0;k<H;k++)inv[k]+=(S.backlog_inv?S.backlog_inv[k]:0);
-    const col=new Array(H).fill(0);
-    // payment slowdown phases in over ~3 months (customers stretch terms progressively, not all on day one)
+  if(S.inv_lag){const inv=new Array(H).fill(0);
+    for(let k=0;k<H;k++){inv[k]+=(S.backlog_inv?S.backlog_inv[k]:0)+(S.other_inv||0);for(let j=0;j+k<H&&j<S.inv_lag.length;j++)inv[k+j]+=out.mean[k]*S.inv_lag[j]}
+    const col=new Array(H).fill(0),sc_=S.col_scale||1,w=S.col_lag;
     const put=(m0,v)=>{const m=m0+sc.pay/30.4*Math.min(1,Math.max(0,(m0+1)/3));const lo=Math.floor(m),fr=m-lo;if(lo<H&&lo>=0)col[lo]+=v*(1-fr);if(lo+1<H&&lo+1>=0)col[lo+1]+=v*fr};
-    for(let k=0;k<H;k++)for(let j=0;j<S.col_lag.length;j++)put(k+j,inv[k]*S.col_lag[j]);
-    for(const [amt,days] of S.ar_items)put(days/30.4-0.5,amt);
+    const past=S.past_inv||[];   // past_inv[0] = current month, [1] = previous ...
+    for(let jj=0;jj<past.length;jj++){const src=-jj;for(let j=0;j<w.length;j++){const m0=src+j-1;if(m0>=0)put(m0,sc_*past[jj]*w[j])}}
+    for(let k=0;k<H;k++)for(let j=0;j<w.length;j++)put(k+j,sc_*inv[k]*w[j]);
     out.inv=inv;out.col=col}
   return out}
 
 R.stress=()=>{const S=D.stress;
-  const presets={'Base case':BASE,'Market slowdown':{...BASE,win:-.2,nb:-.3,pay:30},'Mega-project delays':{...BASE,topN:10,delay:3},'Lose 3 biggest deals':{...BASE,lose:3},'Liquidity squeeze':{...BASE,pay:60,win:-.1},'Upside':{...BASE,win:.1,nb:.15}};
+  const def={'Base case':BASE,'Market slowdown':{...BASE,win:-.2,nb:-.3,pay:30},'Mega-project delays':{...BASE,topN:10,delay:3},'Lose 3 biggest deals':{...BASE,lose:3},'Liquidity squeeze':{...BASE,pay:60,win:-.1},'Upside':{...BASE,win:.1,nb:.15}};
+  const presets={...def};if(S.presets&&S.presets.length){delete presets['Mega-project delays'];delete presets['Liquidity squeeze']}(S.presets||[]).forEach(p=>presets[p.name]={...BASE,...p.sc});
+  const segs=['all',...S.teams.map(t=>'team:'+t),...S.groups.map(g=>'group:'+g)];
   $('#s-stress').innerHTML=`<h2>Stress test — next ${S.months.length} months</h2>
-  <div class="card"><div class="presets" id="pre">${Object.keys(presets).map(k=>`<button>${k}</button>`).join('')}</div>
+  <div class="card"><div class="presets" id="pre">${Object.keys(presets).map(k=>`<button title="${(presets[k].note||'').replace(/"/g,'')}">${k}</button>`).join('')}</div><div class="note" id="pnote"></div>
   <div class="ctrl">
+   <div><label>Apply win-rate and new-business changes to</label><select id="seg">${segs.map(x=>`<option value="${x}">${x==='all'?'All teams and products':x.replace('team:','Team: ').replace('group:','Product: ')}</option>`).join('')}</select></div>
    <div><label>Win rate change <output id="o-win"></output></label><input type="range" id="win" min="-50" max="30" step="5"></div>
    <div><label>New business volume <output id="o-nb"></output></label><input type="range" id="nb" min="-60" max="30" step="5"></div>
    <div><label>Delay the top <output id="o-topN"></output> customers…</label><input type="range" id="topN" min="0" max="25" step="1"></div>
@@ -247,21 +260,26 @@ R.stress=()=>{const S=D.stress;
   <div class="grid k4" style="margin-top:12px" id="st-k"></div>
   <div class="grid c2" style="margin-top:12px"><div class="card"><h3>Award by month — scenario vs base (P50, with scenario P10–P90)</h3><div class="ch"><canvas id="c-t1"></canvas></div></div>
   <div class="card"><h3>${S.inv_lag?'Invoicing and collections — scenario vs base':'Cumulative award — scenario vs base'}</h3><div class="ch"><canvas id="c-t2"></canvas></div></div></div>
-  <div class="note">Each run simulates 2,000 futures: every open quotation is won or not according to its model probability (× the win-rate change and a common market shock), lands in a month drawn from the empirical award-timing distribution, plus business from quotations not yet raised (recent run-rate). Invoicing follows the historical award-to-invoice profile, cash follows the invoice-to-payment profile and current receivables follow each customer's payment habit.</div>`;
+  <div class="grid c2" style="margin-top:12px"><div class="card"><h3>By team — 6-month award (P50)</h3><div id="st-team"></div></div>
+  <div class="card"><h3>Year-end target gap${S.target_ses&&S.all_ses?` (${S.target_ses} of ${S.all_ses} SEs carry a target)`:''}</h3><div id="st-gap"></div></div></div>
+  <div class="note">Each run simulates 2,000 futures: every open quotation is won or not according to its model probability (× the win-rate change for the selected team / product and a common market shock), lands in a month drawn from the empirical award-timing distribution, plus each team's run-rate of business from quotations not yet raised. Invoicing follows the award-to-invoice profile fitted on history plus invoicing still due from recent awards; cash follows the collection profile${S.fit?` (average collection delay ${S.fit.cash_mean_lag_months} months)`:''}; slower payments phase in over three months.</div>`;
   const ids=['win','nb','topN','delay','lose','pay','shock'];
   const fmt={win:v=>(v>0?'+':'')+v+'%',nb:v=>(v>0?'+':'')+v+'%',topN:v=>v,delay:v=>v,lose:v=>v,pay:v=>'+'+v,shock:v=>v};
-  const base=runSim(BASE);
-  const set=sc=>{ids.forEach(i=>{const el=$('#'+i);el.value=(i==='win'||i==='nb')?Math.round(sc[i]*100):sc[i]});upd()};
-  const read=()=>({win:+$('#win').value/100,nb:+$('#nb').value/100,topN:+$('#topN').value,delay:+$('#delay').value,lose:+$('#lose').value,pay:+$('#pay').value,shock:+$('#shock').value});
+  const base=runSim(BASE);let cur={...BASE};
+  const set=sc=>{cur={...BASE,...sc};ids.forEach(i=>{$('#'+i).value=(i==='win'||i==='nb')?Math.round(cur[i]*100):cur[i]});$('#seg').value=cur.seg||'all';$('#pnote').textContent=cur.note||'';upd()};
+  const read=()=>({...cur,win:+$('#win').value/100,nb:+$('#nb').value/100,seg:$('#seg').value,topN:+$('#topN').value,delay:+$('#delay').value,lose:+$('#lose').value,pay:+$('#pay').value,shock:+$('#shock').value});
   let tmr;function upd(){ids.forEach(i=>$('#o-'+i).textContent=fmt[i]($('#'+i).value));clearTimeout(tmr);tmr=setTimeout(draw,120)}
-  function draw(){const sc=read(),o=runSim(sc);const d=o.tot.p50-base.tot.p50;
+  function draw(){const sc=read(),o=runSim(sc);const d=o.tot.p50-base.tot.p50;const sum=a=>a.reduce((x,y)=>x+y,0);
     $('#st-k').innerHTML=kpi('6-month award (P50)',M(o.tot.p50),`base ${M(base.tot.p50)} · ${d>=0?'+':''}${M(d)}`,d<0?'bad':'good')+kpi('Range (P10–P90)',M(o.tot.p10)+' – '+M(o.tot.p90),'')+
      (o.hit!=null?kpi('Chance to close this year’s gap',P(o.hit),`need ${M(S.remaining_year)} in ${S.months_left_in_year} month(s) · P50 ${M(o.yr50)}`,o.hit<.5?'bad':'good'):'')+
-     (o.col?kpi('Collections, 6 months',M(o.col.reduce((a,b)=>a+b,0)),`base ${M(base.col.reduce((a,b)=>a+b,0))}`,'')+'':'');
+     (o.col?kpi('Collections, 6 months',M(sum(o.col)),`base ${M(sum(base.col))} · ${sum(o.col)-sum(base.col)>=0?'+':''}${M(sum(o.col)-sum(base.col))}`,sum(o.col)<sum(base.col)-1?'bad':''):'');
+    $('#st-team').innerHTML=table([['Team',r=>r.t],['Base',r=>M(r.b)],['Scenario',r=>M(r.s)],['Change',r=>`<span class="${r.s<r.b-1?'bad':r.s>r.b+1?'good':''}">${r.s-r.b>=0?'+':''}${M(r.s-r.b)}</span>`]],S.teams.map((t,i)=>({t,b:base.team[i],s:o.team[i]})).sort((x,y)=>y.b-x.b));
+    const g=(S.targets_by_team||[]).filter(x=>x.team);$('#st-gap').innerHTML=g.length?table([['Team',r=>r.team],['Target',r=>M(r.target)],['Award YTD',r=>M(r.award_ytd)],['Still needed',r=>M(r.remaining)],['% done',r=>P(r.award_ytd/Math.max(1,r.target))]],g.sort((x,y)=>y.remaining-x.remaining))+`<div class="note">Award YTD counts only the sales engineers who carry a target, so the gap compares like with like.</div>`:'<div class="note">No targets loaded.</div>';
     chart('c-t1',{type:'bar',data:{labels:S.months.map(ml),datasets:[{label:'Base P50',data:base.p50,backgroundColor:css('--line')},{label:'Scenario P50',data:o.p50,backgroundColor:css('--acc')},{type:'line',label:'Scenario P10',data:o.p10,borderColor:css('--warn'),borderDash:[4,4],pointRadius:0},{type:'line',label:'Scenario P90',data:o.p90,borderColor:css('--acc2'),borderDash:[4,4],pointRadius:0}]},options:{animation:false,scales:{y:yM}}});
     if(o.inv){chart('c-t2',{type:'line',data:{labels:S.months.map(ml),datasets:[{label:'Invoicing (base)',data:base.inv,borderColor:css('--line'),pointRadius:0},{label:'Invoicing (scenario)',data:o.inv,borderColor:css('--acc'),pointRadius:2},{label:'Collections (base)',data:base.col,borderColor:css('--line'),borderDash:[4,4],pointRadius:0},{label:'Collections (scenario)',data:o.col,borderColor:css('--acc2'),pointRadius:2}]},options:{animation:false,scales:{y:yM}}})}
     else{const cs=a=>{let c=0;return a.map(x=>c+=x)};chart('c-t2',{type:'line',data:{labels:S.months.map(ml),datasets:[{label:'Base',data:cs(base.p50),borderColor:css('--mute'),pointRadius:0},{label:'Scenario',data:cs(o.p50),borderColor:css('--acc'),pointRadius:2}]},options:{animation:false,scales:{y:yM}}})}}
   ids.forEach(i=>$('#'+i).oninput=()=>{document.querySelectorAll('#pre button').forEach(b=>b.classList.remove('on'));upd()});
+  $('#seg').onchange=()=>{document.querySelectorAll('#pre button').forEach(b=>b.classList.remove('on'));upd()};
   document.querySelectorAll('#pre button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#pre button').forEach(x=>x.classList.toggle('on',x===b));set(presets[b.textContent])});
   document.querySelector('#pre button').classList.add('on');set(BASE);
 };

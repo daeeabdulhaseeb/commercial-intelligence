@@ -21,50 +21,60 @@ ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
 MAX_Q = 2500
 
 
-def stress_inputs(scored, tim, nb, invoices, inv_open, panel, as_of, cust_delay):
+def stress_inputs(scored, tim, panel, snap, as_of):
+    """Per-quotation inputs for the in-browser Monte Carlo, with team / product-group tags for segment levers."""
+    end_t = int(Mo._mi([as_of])[0])
     sc = scored.copy()
     sc['exp'] = sc.value * sc.p_win
     sc = sc.sort_values('exp', ascending=False)
+    vt = sc.groupby(sc.team.astype(str)).value.sum()
+    teams = sorted(t for t in vt.index if t and t not in ('0', '0.0', 'nan') and vt[t] >= 0.002 * vt.sum())
+    groups = sorted(g for g in sc.product_group.astype(str).unique() if g)
+    ti = {t: i for i, t in enumerate(teams)}
+    gi = {g: i for i, g in enumerate(groups)}
     cust_rank = sc.groupby('customer_id').value.sum().rank(ascending=False, method='first').astype(int)
     keep, rest = sc.head(MAX_Q), sc.iloc[MAX_Q:]
-    rest_m = np.zeros(Mo.H)
+    rest_t = {t: np.zeros(Mo.H) for t in teams}
     for r in rest.itertuples():
-        rest_m += r.value * r.p_win * np.array(tim[int(np.clip(r.to_ead_m, -3, 9))])
+        if str(r.team) in rest_t:
+            rest_t[str(r.team)] += r.value * r.p_win * np.array(tim[int(np.clip(r.to_ead_m, -3, 9))])
     q = [[round(float(r.value), 0), round(float(r.p_win), 4), int(np.clip(r.to_ead_m, -3, 9)),
-          int(cust_rank[r.customer_id])] for r in keep.itertuples()]
-    out = dict(q=q, timing=tim, nb=[round(x) for x in nb], rest=[round(x) for x in rest_m],
-               months=[A.ym_add(as_of, i) for i in range(1, Mo.H + 1)])
-    # award -> invoice lag (share of awarded value invoiced k months after the award month)
-    if invoices is not None and len(invoices):
-        wt = panel[panel.won_t.notna()].drop_duplicates('quote_id').set_index('quote_id')[['won_t', 'value']]
-        iv = invoices.join(wt, on='quote_id', how='inner')
-        iv['lag'] = (Mo._mi(iv.invoice_date) - iv.won_t).clip(0, 8)
-        lag = iv.groupby('lag').amount.sum() / wt.loc[wt.index.isin(iv.quote_id)].value.sum()
-        out['inv_lag'] = [round(float(lag.get(k, 0)), 4) for k in range(9)]
-        end_t = int(Mo._mi([as_of])[0])
-        bl = np.zeros(Mo.H)
-        recent = wt[(wt.won_t > end_t - 9) & (wt.won_t <= end_t)]
-        for wtt, v in zip(recent.won_t, recent.value):
-            for k in range(1, Mo.H + 1):
-                lg = int(end_t + k - wtt)
-                if lg <= 8:
-                    bl[k - 1] += v * out['inv_lag'][lg]
-        out['backlog_inv'] = [round(x) for x in bl]
-        paid = invoices[invoices.paid_date.fillna('').astype(str).str.match(r'\d{4}-')]
-        cl = (Mo._mi(paid.paid_date) - Mo._mi(paid.invoice_date)).clip(0, 9)
-        cdist = paid.amount.groupby(cl).sum() / invoices.amount.sum()
-        out['col_lag'] = [round(float(cdist.get(k, 0)), 4) for k in range(10)]
-        cut = pd.Period(as_of, 'M').to_timestamp(how='end').normalize()
-        o = inv_open.copy()
-        o['exp_days'] = ((o.due + pd.to_timedelta(o.customer_id.map(cust_delay).fillna(15), unit='D')) - cut).dt.days
-        items = []
-        for a, b in zip(o.amount, o.exp_days):
-            if b < 15:      # already late: spread over the next three months instead of assuming instant cash
-                items += [[round(a * 0.5), 15], [round(a * 0.3), 45], [round(a * 0.2), 75]]
-            else:
-                items.append([round(float(a)), int(b)])
-        out['ar_items'] = items
-    return out
+          int(cust_rank[r.customer_id]), ti.get(str(r.team), -1), gi.get(str(r.product_group), -1)]
+         for r in keep.itertuples()]
+    nb_t = {}
+    for t in teams:
+        nb_t[t] = [round(x) for x in Mo.new_business_runrate(panel[panel.team == t], snap[snap.team == t], end_t)]
+    return dict(q=q, timing=tim, teams=teams, groups=groups, nb_team=nb_t,
+                rest_team={t: [round(x) for x in v] for t, v in rest_t.items()},
+                months=[A.ym_add(as_of, i) for i in range(1, Mo.H + 1)])
+
+
+def award_by_month(panel):
+    w = panel[panel.won_t.notna()].drop_duplicates('quote_id')
+    am = w.groupby(w.won_t.astype(int)).value.sum()
+    am.index = [f'{t // 12}-{t % 12 + 1:02d}' for t in am.index]
+    return am
+
+
+def synthetic_cash(inv, ar_open, cust_delay):
+    """Aggregate invoice-level demo data into the same cash inputs a company with aggregate extracts provides."""
+    iv = inv.copy()
+    invoice_m = iv.groupby(iv.invoice_date.str[:7]).amount.sum()
+    paid = iv[iv.paid_date.fillna('').astype(str).str.match(r'\d{4}-')]
+    collect_m = paid.groupby(paid.paid_date.str[:7]).amount.sum()
+    o = ar_open.copy()
+    b = pd.cut(o.od, [-10 ** 6, 0, 30, 60, 365, 10 ** 6], labels=['not_due', 'ovd_0_30', 'ovd_30_60', 'ovd_60_365',
+                                                                   'ovd_365p'])
+    ar = o.assign(b=b).pivot_table(index=['customer_id', 'customer'], columns='b', values='amount', aggfunc='sum',
+                                   fill_value=0, observed=False).reset_index()
+    for c in ['not_due', 'ovd_0_30', 'ovd_30_60', 'ovd_60_365', 'ovd_365p']:
+        if c not in ar:
+            ar[c] = 0.0
+    terms = inv.groupby('customer_id').credit_days.first()
+    ar['terms_days'] = ar.customer_id.map(terms).fillna(30)
+    ar['late_days'] = ar.customer_id.map(cust_delay).fillna(15)
+    ar['team'] = ''
+    return invoice_m, collect_m, ar
 
 
 def run(data, out_dir, public=True, label='demo'):
@@ -91,7 +101,7 @@ def run(data, out_dir, public=True, label='demo'):
     churn_rep, churn_cur = Mo.churn_model(snap, end_t, inv)
     targets = data.get('targets')
     ses = data.get('ses')
-    if targets is not None and ses is not None and len(targets):
+    if targets is not None and ses is not None and len(targets) and 'team' not in targets:
         targets = targets.merge(ses[['se', 'team']], on='se', how='left')
     pipe = A.pipeline(snap, as_of, targets, scored)
     acc, accdf = A.accounts(snap, as_of, data.get('owners'), data.get('customers'), churn_cur)
@@ -110,8 +120,35 @@ def run(data, out_dir, public=True, label='demo'):
     cc = churn_cur.copy()
     cc['name_'] = cc.cid.map(accdf.name)
     nba = Mo.next_best_actions(scored, cc, ar_c, owners_now)
-    stress = stress_inputs(scored, tim, nb, inv, ar_open, panel, as_of, cust_delay)
-    remaining_year = max(0.0, pipe['target'] - pipe['award_ytd'])
+    stress = stress_inputs(scored, tim, panel, snap, as_of)
+    from . import cash as C
+    cash_d = None
+    if data.get('cash'):                                   # company aggregate extracts (private adapter)
+        cd = data['cash']
+        cash_d = C.build(award_by_month(panel), cd['invoice_m'], cd['collect_m'], cd['ar'], as_of,
+                         invoice_all=cd.get('invoice_all'))
+    elif inv is not None and len(inv):
+        im, cm, arx = synthetic_cash(inv, ar_open, cust_delay)
+        cash_d = C.build(award_by_month(panel), im, cm, arx, as_of)
+    if cash_d:
+        stress.update(cash_d)
+    # target gap on the sales engineers that carry a target (award YTD by expected award date)
+    L = snap[snap.snapshot == as_of]
+    Y = as_of[:4]
+    aw = L[L.stage.isin([90, 100]) & (L.expected_award.str[:7] >= f'{Y}-01') & (L.expected_award.str[:7] <= as_of)]
+    tg_rows = []
+    remaining_year, tgt_total, aw_t = 0.0, 0.0, 0.0
+    if targets is not None and len(targets):
+        a_se = aw.groupby('se').value.sum()
+        tt = targets.copy()
+        tt['award_ytd'] = tt.se.map(a_se).fillna(0)
+        tgt_total, aw_t = float(tt.award_target.sum()), float(tt.award_ytd.sum())
+        remaining_year = max(0.0, tgt_total - aw_t)
+        for team, g in tt.groupby(tt.team.fillna('')):
+            tg_rows.append(dict(team=team, target=float(g.award_target.sum()), award_ytd=float(g.award_ytd.sum()),
+                                remaining=max(0.0, float(g.award_target.sum() - g.award_ytd.sum())),
+                                ses=int(len(g))))
+    presets = data.get('presets')
     bundle = dict(
         meta=dict(label=label, company=data['meta'].get('company', ''), as_of=as_of, public=public,
                   synthetic=bool(data['meta'].get('synthetic', False)),
@@ -121,10 +158,25 @@ def run(data, out_dir, public=True, label='demo'):
                         open_scored=int(len(scored)), expected_6m=float((scored.value * scored.p_win).sum()),
                         nba=[dict(se=r.se, type=r.type, impact=round(float(r.impact)), text=r.text)
                              for r in nba.itertuples()]),
-        stress=dict(**stress, remaining_year=remaining_year, target=pipe['target'],
-                    months_left_in_year=12 - pipe['elapsed']),
+        stress=dict(**stress, remaining_year=remaining_year, target=tgt_total, award_ytd_targeted=aw_t,
+                    targets_by_team=tg_rows, target_ses=int(len(targets)) if targets is not None else 0,
+                    all_ses=int(L.se.nunique()), months_left_in_year=12 - pipe['elapsed'], presets=presets),
     )
     os.makedirs(out_dir, exist_ok=True)
+    if not public:   # machine-readable scores for the weekly pipeline report and the account platform
+        pq = {str(r.quote_id).lstrip('0'): round(float(r.p_win), 4) for r in scored.itertuples()}
+        ch = {str(r.cid): dict(p=round(float(r.p_churn), 3), a12=round(float(r.a12)), quiet=int(r.m_since_quote))
+              for r in churn_cur.itertuples()}
+        cthr = max(0.5, float(churn_cur.p_churn.quantile(0.8))) if len(churn_cur) else 0.5
+        with open(os.path.join(out_dir, 'predictive.json'), 'w', encoding='utf-8') as f:
+            json.dump(dict(as_of=as_of, built=bundle['meta']['built'], horizon=Mo.H,
+                           auc=round(rep['auc_model'], 3), auc_stage=round(rep['auc_stage'], 3),
+                           backtests=[dict(start=b['start'], actual=round(b['total']['actual']), p50=round(b['total']['p50']),
+                                           stage=round(b['total']['naive'])) for b in bts],
+                           churn_threshold=round(cthr, 3), quotes=pq, churn=ch,
+                           nb=round(float(sum(nb))), nb_team={t: round(float(sum(v))) for t, v in stress.get('nb_team', {}).items()},
+                           nba=[dict(se=r.se, type=r.type, impact=round(float(r.impact)), text=r.text)
+                                for r in nba.itertuples()]), f, separators=(',', ':'))
     tpl = open(os.path.join(ROOT, 'ci', 'template.html'), encoding='utf-8').read()
     js = json.dumps(bundle, separators=(',', ':'), default=lambda o: None if (isinstance(o, float) and np.isnan(o))
                     else (o.item() if hasattr(o, 'item') else str(o)))
@@ -182,6 +234,19 @@ def load_private(cfg):
             d[k] = pd.read_csv(cfg[k] if os.path.isabs(cfg[k]) else os.path.join(ROOT, cfg[k]), dtype={'quote_id': str, 'customer_id': str}, keep_default_na=False)
     if 'targets' in d:
         d['targets']['award_target'] = pd.to_numeric(d['targets'].award_target)
+    if cfg.get('cash_adapter'):        # private module returning (invoice_m, invoice_all, collect_m, ar, label)
+        import importlib.util
+        ca = cfg['cash_adapter']
+        spec = importlib.util.spec_from_file_location('cash_adapter', ca['module'] if os.path.isabs(ca['module'])
+                                                      else os.path.join(ROOT, ca['module']))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        rp = lambda x: x if os.path.isabs(x) else os.path.join(ROOT, x)
+        im, ia, cm, ar, lab = mod.load(rp(ca['ar']), rp(ca['collections']), rp(ca['sales']))
+        d['cash'] = dict(invoice_m=im, invoice_all=ia, collect_m=cm, ar=ar)
+        d['meta']['ar_snapshot'] = lab
+    if cfg.get('presets'):
+        d['presets'] = cfg['presets']
     return d
 
 

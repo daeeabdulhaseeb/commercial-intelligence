@@ -127,6 +127,7 @@ def accounts(snap, as_of, owners=None, customers=None, churn_cur=None):
         owner = cur_own.combine_first(owner)
     df = pd.DataFrame({'name': name, 'owner': owner, 'first': first_q, 'last_q': last_q, 'last_a': last_a,
                        'a12': a12, 'a_hist': a_hist}).fillna({'a12': 0, 'a_hist': 0})
+    df[['first', 'last_q', 'last_a']] = df[['first', 'last_q', 'last_a']].fillna('')
     act = df[['last_q', 'last_a']].max(axis=1)
     six, twelve = ym_add(as_of, -6), ym_add(as_of, -12)
     df['status'] = np.select([df['first'] > six, act > six, act > twelve], ['New', 'Active', 'Slowing'], 'Dormant')
