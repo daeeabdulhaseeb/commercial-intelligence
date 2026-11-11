@@ -1,0 +1,8 @@
+private/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.DS_Store
+# demo data is regenerated with: python -m ci.synth
+data/synthetic/*
+!data/synthetic/meta.json
