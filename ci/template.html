@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Commercial Intelligence</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#14171c;--mute:#5b6472;--line:#e4e7ec;--acc:#2554c7;--acc2:#0f8a7e;--warn:#c27803;--bad:#c2362b;--good:#1f7a4d;--chip:#eef2fb}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#171a20;--ink:#e8eaee;--mute:#9aa3b2;--line:#2a2f38;--acc:#6f9bff;--acc2:#38c2b2;--warn:#e5a33a;--bad:#ff6b5e;--good:#4cc38a;--chip:#1f2633}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{padding:20px 16px 0;max-width:1240px;margin:auto}
+h1{font-size:22px;margin:0 0 4px}h2{font-size:17px;margin:24px 0 10px}h3{font-size:14px;margin:0 0 8px;color:var(--mute);font-weight:600}
+.sub{color:var(--mute);font-size:13px}
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;background:var(--chip);color:var(--acc);font-size:12px;font-weight:600;margin-left:6px}
+nav{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);margin-top:12px}
+nav div{max-width:1240px;margin:auto;display:flex;gap:4px;overflow-x:auto;padding:0 12px}
+nav button{border:0;background:none;color:var(--mute);padding:10px 12px;font:inherit;font-weight:600;cursor:pointer;white-space:nowrap;border-bottom:2px solid transparent}
+nav button.on{color:var(--ink);border-bottom-color:var(--acc)}
+main{max-width:1240px;margin:auto;padding:8px 16px 48px}
+section{display:none}section.on{display:block}
+.grid{display:grid;gap:12px}.k4{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}.c2{grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}
+.kpi .v{font-size:22px;font-weight:700;margin-top:2px}.kpi .l{color:var(--mute);font-size:12px;text-transform:uppercase;letter-spacing:.03em}.kpi .s{font-size:12px;color:var(--mute);margin-top:2px}
+.good{color:var(--good)}.bad{color:var(--bad)}.warn{color:var(--warn)}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th{color:var(--mute);font-weight:600;font-size:12px;position:sticky;top:0;background:var(--card)}td:first-child,th:first-child{text-align:left}
+.tw{overflow:auto;max-height:440px}
+canvas{max-width:100%}.ch{position:relative;height:280px}
+.note{color:var(--mute);font-size:12.5px;margin-top:8px}
+.pill{display:inline-block;padding:1px 7px;border-radius:6px;font-size:11.5px;font-weight:600;background:var(--chip)}
+.ctrl{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.ctrl label{display:block;font-size:12.5px;color:var(--mute);margin-bottom:4px}.ctrl output{font-weight:700;color:var(--ink)}
+input[type=range]{width:100%}
+.presets button{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:6px 10px;margin:0 6px 6px 0;font:inherit;cursor:pointer}
+.presets button.on{border-color:var(--acc);color:var(--acc)}
+.act{padding:8px 0;border-bottom:1px solid var(--line)}.act:last-child{border:0}
+select{font:inherit;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+.md p{max-width:880px}.md li{max-width:860px;margin-bottom:4px}
+footer{max-width:1240px;margin:auto;padding:16px;color:var(--mute);font-size:12px}
+@media (max-width:600px){.kpi .v{font-size:19px}th,td{padding:5px 6px}}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Commercial Intelligence</h1>
+  <div class="sub" id="subtitle"></div>
+</header>
+<nav><div id="tabs"></div></nav>
+<main id="main"></main>
+<footer id="foot"></footer>
+<script>
+const D=/*__DATA__*/null;
+const $=s=>document.querySelector(s);
+const M=v=>v==null?'–':(Math.abs(v)>=1e9?(v/1e9).toFixed(2)+'B':Math.abs(v)>=1e6?(v/1e6).toFixed(1)+'M':Math.abs(v)>=1e3?(v/1e3).toFixed(0)+'K':Math.round(v).toString());
+const P=(v,d=0)=>v==null?'–':(v*100).toFixed(d)+'%';
+const N=v=>v==null?'–':Math.round(v).toLocaleString('en-US');
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const ml=m=>{const [y,mo]=m.split('-');return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+mo-1]+' '+y.slice(2)};
+const charts={};
+function chart(id,cfg){if(charts[id])charts[id].destroy();const c=document.getElementById(id);if(!c||!window.Chart)return;
+  Chart.defaults.color=css('--mute');Chart.defaults.borderColor=css('--line');Chart.defaults.font.family='system-ui,Segoe UI,Roboto,sans-serif';
+  cfg.options=Object.assign({responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:12}}},interaction:{mode:'index',intersect:false}},cfg.options||{});
+  charts[id]=new Chart(c,cfg)}
+const kpi=(l,v,s='',cls='')=>`<div class="card kpi"><div class="l">${l}</div><div class="v ${cls}">${v}</div><div class="s">${s}</div></div>`;
+function table(cols,rows){return `<div class="tw"><table><thead><tr>${cols.map(c=>`<th>${c[0]}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td>${c[1](r)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`}
+const yM={ticks:{callback:v=>M(v)}};
+const STG={0:'Lost',10:'Hold',15:'Tender',30:'1st quo',50:'2nd quo',70:'Final quo',90:'Order',100:'Order & pay'};
+
+const TABS=[['overview','Overview'],['pipeline','Pipeline'],['leads','Leads'],['accounts','Accounts'],['se','SE performance'],['ar','Receivables'],['predict','Predictive'],['stress','Stress test'],['method','Method']]
+  .filter(t=>!(t[0]==='leads'&&!D.leads)&&!(t[0]==='ar'&&!D.receivables));
+
+function init(){
+  const m=D.meta;$('#title').textContent=(m.company||'Commercial')+' — Commercial Intelligence';
+  $('#subtitle').innerHTML=`Pipeline, accounts, SE performance, receivables, predictive forecast and stress test · as of ${ml(m.as_of)}`+(m.synthetic?'<span class="badge">Synthetic demo data</span>':'<span class="badge">Private build</span>');
+  $('#foot').innerHTML=(m.synthetic?'All companies, people and figures on this page are fictional and generated by a simulation. ':'')+`Built ${m.built}. Source code and method: see Method tab.`;
+  $('#tabs').innerHTML=TABS.map(t=>`<button data-t="${t[0]}">${t[1]}</button>`).join('');
+  $('#main').innerHTML=TABS.map(t=>`<section id="s-${t[0]}"></section>`).join('');
+  document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>show(b.dataset.t));
+  show(location.hash.slice(1)||'overview');
+}
+const built={};
+function show(t){if(!TABS.find(x=>x[0]===t))t='overview';
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
+  document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id==='s-'+t));
+  history.replaceState(null,'','#'+t);
+  if(!built[t]){built[t]=1;R[t]()}}
+
+const R={};
+R.overview=()=>{const p=D.pipeline,pr=D.predictive,st=D.stress,a=D.accounts,ar=D.receivables;
+  const gap=p.award_ytd-p.pace;
+  $('#s-overview').innerHTML=`<h2>Where we stand</h2><div class="grid k4">
+   ${kpi('Award YTD',M(p.award_ytd),p.target?`${P(p.award_ytd/p.target)} of annual target ${M(p.target)}`:'')}
+   ${kpi('Vs pace',(gap>=0?'+':'')+M(gap),`pace to date ${M(p.pace)}`,gap>=0?'good':'bad')}
+   ${kpi('Hit ratio (12m)',P(p.hit_ratio_12m,1),'award ÷ quotations, by value')}
+   ${kpi('Open pipeline',M(p.open_value),`${N(p.open_n)} quotations · hot ${M(p.hot_value)}`)}
+   ${kpi('Open pipeline: model-expected 6m',M(pr.expected_6m),`CRM stage-weighted: ${M(p.stage_weighted)}`)}
+   ${kpi('Accounts at risk',N(a.at_risk_n),`riskiest fifth · ${M(a.at_risk_value)} last-12m award`, 'warn')}
+   ${ar?kpi('Overdue receivables',M(ar.overdue),`DSO ${ar.dso} days · 90+ ${M(ar.over90)}`,'bad'):''}
+   ${kpi('Stale pipeline',M(p.stale_value),`${N(p.stale_n)} open quotes past award date`,'warn')}
+  </div>
+  <div class="grid c2" style="margin-top:12px">
+   <div class="card"><h3>Award by month — this year vs last year (by expected award date)</h3><div class="ch"><canvas id="c-ov1"></canvas></div></div>
+   <div class="card"><h3>Six-month award outlook (model, P10–P90)</h3><div class="ch"><canvas id="c-ov2"></canvas></div><div class="note" id="ov2n"></div></div>
+  </div>
+  <h2>What to do this week</h2><div class="card" id="ov-act"></div>`;
+  const ms=p.months.slice(12),ly=p.award_by_month.slice(0,12),ty=p.award_by_month.slice(12);
+  chart('c-ov1',{type:'bar',data:{labels:ms.map(ml),datasets:[{label:'Last year',data:ly,backgroundColor:css('--line')},{label:'This year',data:ty,backgroundColor:css('--acc')}]},options:{scales:{y:yM}}});
+  const b=runSim(BASE,1500);
+  chart('c-ov2',{type:'bar',data:{labels:st.months.map(ml),datasets:[{type:'line',label:'P90',data:b.p90,borderColor:css('--acc2'),borderDash:[4,4],pointRadius:0,fill:false},{label:'P50',data:b.p50,backgroundColor:css('--acc2')},{type:'line',label:'P10',data:b.p10,borderColor:css('--warn'),borderDash:[4,4],pointRadius:0,fill:false}]},options:{scales:{y:yM}}});
+  $('#ov2n').textContent=`Six-month total P50 ${M(b.tot.p50)} (P10 ${M(b.tot.p10)} – P90 ${M(b.tot.p90)}). Includes business from quotations not raised yet.`;
+  const by={};pr.nba.slice().sort((x,y)=>y.impact-x.impact).forEach(x=>(by[x.type]=by[x.type]||[]).push(x));
+  const acts=[];for(let i=0;acts.length<8&&i<8;i++)for(const t in by)if(by[t][i]&&acts.length<8)acts.push(by[t][i]);
+  $('#ov-act').innerHTML=acts.map(x=>`<div class="act"><span class="pill">${x.type}</span> <b>${x.se}</b> — ${x.text}</div>`).join('')||'No actions.';
+};
+
+R.pipeline=()=>{const p=D.pipeline;
+  $('#s-pipeline').innerHTML=`<h2>Pipeline</h2><div class="grid k4">
+   ${kpi('Quotations YTD',M(p.quotes_ytd),N(p.quotes_ytd_n)+' quotations')}
+   ${kpi('Needed quotations / month',p.needed_quotes_month?M(p.needed_quotes_month):'–','target ÷ hit ratio ÷ 12')}
+   ${kpi('Hot (50/70%) due next 3m',M(p.hot_next3),`all hot ${M(p.hot_value)}`)}
+   ${kpi('Stage-weighted pipeline',M(p.stage_weighted),'value × CRM stage %','warn')}
+  </div>
+  <div class="grid c2" style="margin-top:12px">
+   <div class="card"><h3>Open pipeline by stage</h3><div class="ch"><canvas id="c-p1"></canvas></div></div>
+   <div class="card"><h3>Quotations raised vs award, by month</h3><div class="ch"><canvas id="c-p2"></canvas></div></div>
+  </div>
+  <h2>By team</h2><div class="card">${table([['Team',r=>r.team],['Award YTD',r=>M(r.award_ytd)],['Target',r=>M(r.target)],['% target',r=>r.target?P(r.award_ytd/r.target):'–'],['Hit ratio',r=>P(r.hit_ratio,1)],['Open',r=>M(r.open)],['Hot',r=>M(r.hot)],['Stale',r=>M(r.stale)]],p.teams)}</div>
+  <h2>Top open deals by model-expected value</h2><div class="card">${table([['Quotation',r=>r.quote],['Customer',r=>r.customer],['SE',r=>r.se],['Stage',r=>r.stage+'%'],['Value',r=>M(r.value)],['Win prob 6m',r=>P(r.p)],['Award date',r=>r.ead],['Date slips',r=>r.slips]],p.top_deals||[])}
+   <div class="note">Win probability comes from the model (Predictive tab). It often disagrees with the CRM stage: deals whose award date keeps slipping or whose customer rarely converts score lower.</div></div>`;
+  chart('c-p1',{type:'bar',data:{labels:p.by_stage.map(s=>s.stage+'% '+STG[s.stage]),datasets:[{label:'Value',data:p.by_stage.map(s=>s.value),backgroundColor:css('--acc')}]},options:{plugins:{legend:{display:false}},scales:{y:yM}}});
+  chart('c-p2',{type:'line',data:{labels:p.months.map(ml),datasets:[{label:'Quotations raised',data:p.quotes_by_month,borderColor:css('--mute'),pointRadius:0},{label:'Award',data:p.award_by_month,borderColor:css('--acc'),backgroundColor:css('--acc'),pointRadius:2}]},options:{scales:{y:yM}}});
+};
+
+R.leads=()=>{const l=D.leads;
+  $('#s-leads').innerHTML=`<h2>Leads → quotations → awards</h2><div class="grid k4">
+   ${kpi('Leads',N(l.total),'all channels')}${kpi('Converted to quotation',N(l.quoted),P(l.quoted/l.total))}
+   ${kpi('Won',N(l.won),P(l.won/Math.max(1,l.quoted))+' of quoted')}${kpi('Leaked to competitor',N(l.leaked),'','bad')}
+   ${kpi('Unrouted (last 3m)',N(l.unrouted_3m),'no sales engineer assigned','warn')}${kpi('Open',N(l.open),'')}
+  </div>
+  <div class="grid c2" style="margin-top:12px"><div class="card"><h3>Funnel by channel</h3><div class="ch"><canvas id="c-l1"></canvas></div></div>
+  <div class="card"><h3>Leads per month by channel</h3><div class="ch"><canvas id="c-l2"></canvas></div></div></div>
+  <h2>Channel performance</h2><div class="card">${table([['Channel',r=>r.channel],['Leads',r=>N(r.leads)],['Routed',r=>P(r.routed)],['Quoted',r=>N(r.quoted)],['Lead→quote',r=>P(r.conv_quote)],['Won',r=>N(r.won)],['Quote→win',r=>P(r.conv_win)],['Won value',r=>M(r.won_value)],['Leaked',r=>N(r.leaked)]],l.by_channel)}
+  <div class="note">Conversion by lead temperature: ${l.by_temp.map(t=>`${t.temp} ${P(t.quoted)}`).join(' · ')}. Unrouted leads convert far less — routing every lead to an owner the same week is the cheapest growth lever.</div></div>`;
+  const c=l.by_channel;
+  chart('c-l1',{type:'bar',data:{labels:c.map(x=>x.channel),datasets:[{label:'Leads',data:c.map(x=>x.leads),backgroundColor:css('--line')},{label:'Quoted',data:c.map(x=>x.quoted),backgroundColor:css('--acc')},{label:'Won',data:c.map(x=>x.won),backgroundColor:css('--acc2')}]}});
+  const cols=[css('--acc'),css('--acc2'),css('--warn'),css('--mute')];
+  chart('c-l2',{type:'line',data:{labels:l.months.map(ml),datasets:Object.entries(l.trend).map(([k,v],i)=>({label:k,data:v,borderColor:cols[i%4],pointRadius:0}))}});
+};
+
+R.accounts=()=>{const a=D.accounts;const order=['New','Active','Slowing','Dormant'];const sm=Object.fromEntries(a.summary.map(x=>[x.status,x]));
+  $('#s-accounts').innerHTML=`<h2>Account base</h2><div class="grid k4">${order.map(s=>sm[s]?kpi(s,N(sm[s].n),`last-12m award ${M(sm[s].a12)}`,s==='Dormant'?'bad':s==='Slowing'?'warn':''):'').join('')}
+   ${kpi('At risk of going quiet',N(a.at_risk_n),`${M(a.at_risk_value)} last-12m award · churn model`,'warn')}${kpi('Ownership transfers (6m)',N(a.transfers_6m),'')}</div>
+  <div class="grid c2" style="margin-top:12px"><div class="card"><h3>Accounts by owner and status</h3><div class="ch" style="height:360px"><canvas id="c-a1"></canvas></div></div>
+  <div class="card"><h3>At-risk active accounts (churn model)</h3>${table([['Customer',r=>r.customer],['Owner',r=>r.owner||'–'],['Risk',r=>P(r.p)],['Award 12m',r=>M(r.a12)],['Months quiet',r=>r.quiet]],a.churn||[])}</div></div>
+  <h2>Win-back list — dormant accounts with the largest past business</h2><div class="card">${table([['Customer',r=>r.customer],['Owner',r=>r.owner||'–'],['Last activity',r=>r.last],['Historic award',r=>M(r.hist)]],a.winback)}
+  <div class="note">Status: New = first quotation in the last 6 months; Active = quotation or award in the last 6 months; Slowing = last activity 6–12 months ago; Dormant = nothing for 12+ months.</div></div>`;
+  const b=a.by_se.slice().sort((x,y)=>(y.Active+y.Slowing)-(x.Active+x.Slowing));
+  const col={New:css('--acc2'),Active:css('--acc'),Slowing:css('--warn'),Dormant:css('--bad')};
+  chart('c-a1',{type:'bar',data:{labels:b.map(x=>x.se),datasets:order.map(s=>({label:s,data:b.map(x=>x[s]),backgroundColor:col[s]}))},options:{indexAxis:'y',scales:{x:{stacked:true},y:{stacked:true,ticks:{autoSkip:false,font:{size:10}}}}}});
+};
+
+R.se=()=>{const s=D.se;
+  $('#s-se').innerHTML=`<h2>Sales engineer scorecard</h2><div class="card">${table([['SE',r=>r.se],['Team',r=>r.team],['Score',r=>`<b>${r.score}</b>`],['Award YTD',r=>M(r.award_ytd)],['Target',r=>M(r.target)],['Quotation',r=>P(r.c_quotation)],['Hot→award',r=>P(r.c_hot_to_award)],['Award',r=>P(r.c_award)],['Invoicing',r=>P(r.c_invoicing)],['Hit ratio',r=>P(r.hit_ratio,1)],['Needed quo/month',r=>M(r.needed_q_month)]],s.rows)}
+  <div class="note">Score = quotation ${s.weights.quotation}% + hot-project-to-award ${s.weights.hot_to_award}% + award ${s.weights.award}% + invoicing ${s.weights.invoicing}%, each as achievement vs its target (capped at 150%). Quotation target = annual award target ÷ the SE's hit ratio (bounded to 0.5–2× the company's ${P(s.company_hit_ratio,1)}) ÷ 12 per month. Hot-to-award target: 75% of award from projects that were hot first (50% for dealer teams).</div></div>
+  <div class="card" style="margin-top:12px"><h3>Score vs award achievement</h3><div class="ch"><canvas id="c-s1"></canvas></div></div>`;
+  chart('c-s1',{type:'scatter',data:{datasets:[{label:'Sales engineers',data:s.rows.map(r=>({x:r.c_award*100,y:r.score,se:r.se})),backgroundColor:css('--acc')}]},options:{plugins:{tooltip:{callbacks:{label:c=>`${c.raw.se}: award ${c.raw.x.toFixed(0)}%, score ${c.raw.y}`}}},scales:{x:{title:{display:true,text:'Award vs pace (%)'}},y:{title:{display:true,text:'Score'}}}}});
+};
+
+R.ar=()=>{const a=D.receivables;
+  $('#s-ar').innerHTML=`<h2>Receivables & collections</h2><div class="grid k4">${kpi('Receivables',M(a.total),'')}${kpi('Overdue',M(a.overdue),P(a.overdue/a.total)+' of total','bad')}${kpi('Over 90 days',M(a.over90),'','bad')}${kpi('DSO',a.dso+' days','receivables ÷ last-90-day billing')}</div>
+  <div class="grid c2" style="margin-top:12px"><div class="card"><h3>Ageing (days past due)</h3><div class="ch"><canvas id="c-r1"></canvas></div></div>
+  <div class="card"><h3>Billing, collections and overdue — 12 months</h3><div class="ch"><canvas id="c-r2"></canvas></div></div></div>
+  <div class="grid c2" style="margin-top:12px"><div class="card"><h3>Largest overdue customers</h3>${table([['Customer',r=>r.customer],['Overdue',r=>M(r.overdue)],['Oldest (days)',r=>r.days]],a.top)}</div>
+  <div class="card"><h3>By sales engineer</h3>${table([['SE',r=>r.se],['Receivables',r=>M(r.ar)],['Overdue',r=>M(r.overdue)],['Overdue %',r=>P(r.overdue/Math.max(1,r.ar))]],a.by_se)}</div></div>
+  <div class="note">Overdue starts the day after the due date (invoice date + credit term).</div>`;
+  chart('c-r1',{type:'bar',data:{labels:a.buckets.map(b=>b.b),datasets:[{data:a.buckets.map(b=>b.v),backgroundColor:a.buckets.map((b,i)=>i===0?css('--acc2'):i<3?css('--warn'):css('--bad'))}]},options:{plugins:{legend:{display:false}},scales:{y:yM}}});
+  chart('c-r2',{type:'bar',data:{labels:a.trend.map(t=>ml(t.m)),datasets:[{label:'Billed',data:a.trend.map(t=>t.billed),backgroundColor:css('--line')},{label:'Collected',data:a.trend.map(t=>t.collected),backgroundColor:css('--acc2')},{type:'line',label:'Overdue (month end)',data:a.trend.map(t=>t.overdue),borderColor:css('--bad'),pointRadius:2}]},options:{scales:{y:yM}}});
+};
+
+R.predict=()=>{const p=D.predictive,w=p.win;
+  const imp=Object.entries(w.importance).slice(0,10);
+  const FN={stage:'CRM stage',customer_id_wr:"Customer's past win rate",log_value:'Quotation size',stage_moves:'Stage progress so far',age_m:'Age of quotation',se_wr:"SE's past win rate",tm:'Team',pg:'Product group',moy:'Month of year',months_in_stage:'Months in current stage',customer_id_n:'Customer history depth',se_n:'SE history depth',ead_slips:'Award-date slips',stage_max:'Highest stage reached',to_ead_m:'Months to award date',rg:'Region'};
+  $('#s-predict').innerHTML=`<h2>Win probability model</h2>
+  <div class="grid k4">${kpi('Ranking quality (AUC)',w.auc_model.toFixed(3),`CRM stage %: ${w.auc_stage.toFixed(3)}`,'good')}
+   ${kpi('Probability error (Brier)',w.brier_model.toFixed(3),`CRM stage %: ${w.brier_stage.toFixed(3)} · lower is better`,'good')}
+   ${kpi('Test: value won in 6m',M(w.value_won),`model expected ${M(w.value_exp_model)}`)}
+   ${kpi('CRM stage-weighted expected',M(w.value_exp_stage),`${(w.value_exp_stage/Math.max(1,w.value_won)).toFixed(1)}× what was actually won`,'bad')}</div>
+  <div class="grid c2" style="margin-top:12px"><div class="card"><h3>Calibration — predicted vs actual 6-month win rate (test period)</h3><div class="ch"><canvas id="c-m1"></canvas></div></div>
+  <div class="card"><h3>CRM stage % vs what actually happened</h3>${table([['Stage',r=>r.stage+'% '+STG[r.stage]],['Quotes (test)',r=>N(r.n)],['CRM says',r=>r.stage+'%'],['Actual 6m win',r=>P(r.actual,1)],['Model avg',r=>P(r.model,1)]],w.by_stage)}
+   <div class="note">Out-of-time test: trained on snapshots up to 12 months before the last data point, scored on the following 6 monthly snapshots, outcomes observed over the next 6 months.</div></div></div>
+  <div class="grid c2" style="margin-top:12px"><div class="card"><h3>What drives the prediction (drop in AUC when a feature is shuffled)</h3><div class="ch"><canvas id="c-m2"></canvas></div></div>
+  <div class="card"><h3>Forecast backtests — 6-month award, forecast vs actual</h3>${table([['Forecast made',r=>ml(r.start)],['Actual',r=>M(r.total.actual)],['Model P50',r=>M(r.total.p50)],['P10–P90',r=>M(r.total.p10)+' – '+M(r.total.p90)],['Error',r=>{const e=r.total.p50/r.total.actual-1;return `<span class="${Math.abs(e)<.2?'good':'warn'}">${e>0?'+':''}${P(e)}</span>`}],['Stage-weighted',r=>M(r.total.naive)]],p.backtests)}
+   <div class="note">Each backtest uses only data visible at the forecast date (model trained 6+ months earlier). Stage-weighted = Σ value × CRM stage % with award dates inside the window.</div></div></div>
+  <h2>Account churn model</h2><div class="grid k4">${kpi('AUC',p.churn.auc_model.toFixed(3),`rule "months since last quote": ${p.churn.auc_rule.toFixed(3)}`)}${kpi('Top-20% capture',P(p.churn.top20_capture),'of accounts that went quiet were in the riskiest fifth')}${kpi('Base rate',P(p.churn.base_rate),'active accounts that go quiet within 6m')}</div>
+  <h2>Next best actions by sales engineer</h2><div class="card"><select id="nba-se"></select><div id="nba" style="margin-top:8px"></div></div>`;
+  const c=w.calibration;
+  chart('c-m1',{type:'line',data:{labels:c.map(x=>P(x.pred)),datasets:[{label:'Actual',data:c.map(x=>x.actual),borderColor:css('--acc'),pointRadius:3},{label:'Model',data:c.map(x=>x.pred),borderColor:css('--acc2'),borderDash:[4,4],pointRadius:0},{label:'CRM stage %',data:c.map(x=>x.stage),borderColor:css('--warn'),pointRadius:2}]},options:{scales:{y:{ticks:{callback:v=>P(v)}},x:{title:{display:true,text:'model probability decile'}}}}});
+  chart('c-m2',{type:'bar',data:{labels:imp.map(x=>FN[x[0]]||x[0]),datasets:[{data:imp.map(x=>Math.max(0,x[1])),backgroundColor:css('--acc')}]},options:{indexAxis:'y',plugins:{legend:{display:false}}}});
+  const ses=[...new Set(p.nba.map(x=>x.se))].sort();
+  const sel=$('#nba-se');sel.innerHTML=ses.map(s=>`<option>${s}</option>`).join('');
+  const draw=()=>{$('#nba').innerHTML=p.nba.filter(x=>x.se===sel.value).map(x=>`<div class="act"><span class="pill">${x.type}</span> ${x.text} <span class="sub">· impact ${M(x.impact)}</span></div>`).join('')};
+  sel.onchange=draw;draw();
+};
+
+// ------------------------------------------------------------------ Monte Carlo (stress test)
+function rng(seed){return function(){seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function lnorm(r,sd){let u=0,v=0;while(u===0)u=r();while(v===0)v=r();return Math.exp(-sd*sd/2+sd*Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v))}
+const BASE={win:0,topN:0,delay:0,nb:0,pay:0,lose:0,shock:0.15};
+function pct(a,q){const s=a.slice().sort((x,y)=>x-y);return s[Math.min(s.length-1,Math.floor(q*s.length))]}
+function runSim(sc,sims=2000){const S=D.stress,H=S.months.length,r=rng(42);
+  const q=S.q, T=S.timing, cum={};for(const k in T){let c=0;cum[k]=T[k].map(x=>c+=x)}
+  const big=q.map((x,i)=>[x[0],i]).sort((a,b)=>b[0]-a[0]).slice(0,sc.lose).map(x=>x[1]);const lost=new Set(big);
+  const res=[];const tots=[];const yr=[];const yl=Math.min(H,S.months_left_in_year);
+  for(let s=0;s<sims;s++){const a=new Float64Array(H);const f=lnorm(r,sc.shock);
+    for(let i=0;i<q.length;i++){const x=q[i];if(lost.has(i))continue;const p=Math.min(.99,x[1]*(1+sc.win)*f);
+      if(r()<p){const u=r(),c=cum[x[2]];let k=0;while(k<H-1&&u>c[k])k++;if(x[3]<=sc.topN)k+=sc.delay;if(k<H)a[k]+=x[0]}}
+    for(let k=0;k<H;k++){a[k]+=S.rest[k]*(1+sc.win)*f+S.nb[k]*(1+sc.nb)*f*lnorm(r,0.2)}
+    res.push(a);let t=0,y=0;for(let k=0;k<H;k++){t+=a[k];if(k<yl)y+=a[k]}tots.push(t);yr.push(y)}
+  const out={p10:[],p50:[],p90:[],mean:[]};for(let k=0;k<H;k++){const col=res.map(a=>a[k]);out.p10.push(pct(col,.1));out.p50.push(pct(col,.5));out.p90.push(pct(col,.9));out.mean.push(col.reduce((x,y)=>x+y,0)/sims)}
+  out.tot={p10:pct(tots,.1),p50:pct(tots,.5),p90:pct(tots,.9)};
+  out.hit=S.remaining_year>0?yr.filter(v=>v>=S.remaining_year).length/sims:null;out.yr50=pct(yr,.5);
+  // invoicing & collections on the mean award path
+  if(S.inv_lag){const inv=new Array(H).fill(0);for(let k=0;k<H;k++)for(let j=0;j+k<H;j++)inv[k+j]+=out.mean[k]*S.inv_lag[j];
+    for(let k=0;k<H;k++)inv[k]+=(S.backlog_inv?S.backlog_inv[k]:0);
+    const col=new Array(H).fill(0);
+    // payment slowdown phases in over ~3 months (customers stretch terms progressively, not all on day one)
+    const put=(m0,v)=>{const m=m0+sc.pay/30.4*Math.min(1,Math.max(0,(m0+1)/3));const lo=Math.floor(m),fr=m-lo;if(lo<H&&lo>=0)col[lo]+=v*(1-fr);if(lo+1<H&&lo+1>=0)col[lo+1]+=v*fr};
+    for(let k=0;k<H;k++)for(let j=0;j<S.col_lag.length;j++)put(k+j,inv[k]*S.col_lag[j]);
+    for(const [amt,days] of S.ar_items)put(days/30.4-0.5,amt);
+    out.inv=inv;out.col=col}
+  return out}
+
+R.stress=()=>{const S=D.stress;
+  const presets={'Base case':BASE,'Market slowdown':{...BASE,win:-.2,nb:-.3,pay:30},'Mega-project delays':{...BASE,topN:10,delay:3},'Lose 3 biggest deals':{...BASE,lose:3},'Liquidity squeeze':{...BASE,pay:60,win:-.1},'Upside':{...BASE,win:.1,nb:.15}};
+  $('#s-stress').innerHTML=`<h2>Stress test — next ${S.months.length} months</h2>
+  <div class="card"><div class="presets" id="pre">${Object.keys(presets).map(k=>`<button>${k}</button>`).join('')}</div>
+  <div class="ctrl">
+   <div><label>Win rate change <output id="o-win"></output></label><input type="range" id="win" min="-50" max="30" step="5"></div>
+   <div><label>New business volume <output id="o-nb"></output></label><input type="range" id="nb" min="-60" max="30" step="5"></div>
+   <div><label>Delay the top <output id="o-topN"></output> customers…</label><input type="range" id="topN" min="0" max="25" step="1"></div>
+   <div><label>…by <output id="o-delay"></output> months</label><input type="range" id="delay" min="0" max="6" step="1"></div>
+   <div><label>Lose the <output id="o-lose"></output> largest open deals</label><input type="range" id="lose" min="0" max="10" step="1"></div>
+   <div><label>Customers pay later by <output id="o-pay"></output> days</label><input type="range" id="pay" min="0" max="90" step="10"></div>
+   <div><label>Market volatility (common shock sd) <output id="o-shock"></output></label><input type="range" id="shock" min="0.05" max="0.4" step="0.05"></div>
+  </div></div>
+  <div class="grid k4" style="margin-top:12px" id="st-k"></div>
+  <div class="grid c2" style="margin-top:12px"><div class="card"><h3>Award by month — scenario vs base (P50, with scenario P10–P90)</h3><div class="ch"><canvas id="c-t1"></canvas></div></div>
+  <div class="card"><h3>${S.inv_lag?'Invoicing and collections — scenario vs base':'Cumulative award — scenario vs base'}</h3><div class="ch"><canvas id="c-t2"></canvas></div></div></div>
+  <div class="note">Each run simulates 2,000 futures: every open quotation is won or not according to its model probability (× the win-rate change and a common market shock), lands in a month drawn from the empirical award-timing distribution, plus business from quotations not yet raised (recent run-rate). Invoicing follows the historical award-to-invoice profile, cash follows the invoice-to-payment profile and current receivables follow each customer's payment habit.</div>`;
+  const ids=['win','nb','topN','delay','lose','pay','shock'];
+  const fmt={win:v=>(v>0?'+':'')+v+'%',nb:v=>(v>0?'+':'')+v+'%',topN:v=>v,delay:v=>v,lose:v=>v,pay:v=>'+'+v,shock:v=>v};
+  const base=runSim(BASE);
+  const set=sc=>{ids.forEach(i=>{const el=$('#'+i);el.value=(i==='win'||i==='nb')?Math.round(sc[i]*100):sc[i]});upd()};
+  const read=()=>({win:+$('#win').value/100,nb:+$('#nb').value/100,topN:+$('#topN').value,delay:+$('#delay').value,lose:+$('#lose').value,pay:+$('#pay').value,shock:+$('#shock').value});
+  let tmr;function upd(){ids.forEach(i=>$('#o-'+i).textContent=fmt[i]($('#'+i).value));clearTimeout(tmr);tmr=setTimeout(draw,120)}
+  function draw(){const sc=read(),o=runSim(sc);const d=o.tot.p50-base.tot.p50;
+    $('#st-k').innerHTML=kpi('6-month award (P50)',M(o.tot.p50),`base ${M(base.tot.p50)} · ${d>=0?'+':''}${M(d)}`,d<0?'bad':'good')+kpi('Range (P10–P90)',M(o.tot.p10)+' – '+M(o.tot.p90),'')+
+     (o.hit!=null?kpi('Chance to close this year’s gap',P(o.hit),`need ${M(S.remaining_year)} in ${S.months_left_in_year} month(s) · P50 ${M(o.yr50)}`,o.hit<.5?'bad':'good'):'')+
+     (o.col?kpi('Collections, 6 months',M(o.col.reduce((a,b)=>a+b,0)),`base ${M(base.col.reduce((a,b)=>a+b,0))}`,'')+'':'');
+    chart('c-t1',{type:'bar',data:{labels:S.months.map(ml),datasets:[{label:'Base P50',data:base.p50,backgroundColor:css('--line')},{label:'Scenario P50',data:o.p50,backgroundColor:css('--acc')},{type:'line',label:'Scenario P10',data:o.p10,borderColor:css('--warn'),borderDash:[4,4],pointRadius:0},{type:'line',label:'Scenario P90',data:o.p90,borderColor:css('--acc2'),borderDash:[4,4],pointRadius:0}]},options:{animation:false,scales:{y:yM}}});
+    if(o.inv){chart('c-t2',{type:'line',data:{labels:S.months.map(ml),datasets:[{label:'Invoicing (base)',data:base.inv,borderColor:css('--line'),pointRadius:0},{label:'Invoicing (scenario)',data:o.inv,borderColor:css('--acc'),pointRadius:2},{label:'Collections (base)',data:base.col,borderColor:css('--line'),borderDash:[4,4],pointRadius:0},{label:'Collections (scenario)',data:o.col,borderColor:css('--acc2'),pointRadius:2}]},options:{animation:false,scales:{y:yM}}})}
+    else{const cs=a=>{let c=0;return a.map(x=>c+=x)};chart('c-t2',{type:'line',data:{labels:S.months.map(ml),datasets:[{label:'Base',data:cs(base.p50),borderColor:css('--mute'),pointRadius:0},{label:'Scenario',data:cs(o.p50),borderColor:css('--acc'),pointRadius:2}]},options:{animation:false,scales:{y:yM}}})}}
+  ids.forEach(i=>$('#'+i).oninput=()=>{document.querySelectorAll('#pre button').forEach(b=>b.classList.remove('on'));upd()});
+  document.querySelectorAll('#pre button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#pre button').forEach(x=>x.classList.toggle('on',x===b));set(presets[b.textContent])});
+  document.querySelector('#pre button').classList.add('on');set(BASE);
+};
+
+R.method=()=>{const p=D.predictive;
+  $('#s-method').innerHTML=`<div class="card md"><h2 style="margin-top:0">How this works</h2>
+  <p>One code base, two data sources. The same Python pipeline runs on monthly CRM / ERP extracts (quotation snapshots, invoices, leads, account ownership) or, for this public demo, on a simulated company. ${D.meta.synthetic?'<b>Everything on this page is synthetic</b>: the simulator gives every customer a hidden loyalty and payment habit and every sales engineer a hidden skill, moves quotations through stages month by month, lets award dates slip, makes some customers fade out, and invoices and collects awarded orders.':''}</p>
+  <h3>Descriptive layer</h3><ul><li><b>Award</b> = quotations at 90%/100%, dated by expected award date. <b>Hit ratio</b> = award ÷ value of quotations raised (tender/budget quotes excluded), any status including lost.</li><li><b>Hot pipeline</b> = 50/70% quotations; <b>stale</b> = open quotations whose award date has passed.</li><li><b>SE scorecard</b> = quotation 20% + hot-project-to-award 30% + award 20% + invoicing 30%, with quotation targets derived from award targets through each SE's (bounded) hit ratio.</li><li><b>Accounts</b>: New / Active / Slowing / Dormant from quotation and award activity; win-back list ranks dormant accounts by past business.</li></ul>
+  <h3>Predictive layer</h3><ul><li><b>Win probability</b>: gradient-boosted trees on every (open quotation × month-end snapshot): stage, size, age, months in stage, stage moves, award-date slips, months to award date, product, team, region, month of year, and the customer's and SE's win record <i>as known at that date</i>. Target: awarded within ${p.horizon} months. Evaluated out-of-time against the CRM stage percentage.</li>
+  <li><b>Forecast</b>: Monte Carlo over open quotations (model probability + empirical award-timing by months-to-award-date) plus the run-rate of business from quotations not yet raised, with a common market shock for correlated risk. Backtested from several past dates.</li>
+  <li><b>Churn</b>: gradient-boosted trees on account-months (recency, quotation trend, award trend, payment lateness) predicting no quotation and no award in the next ${p.horizon} months.</li>
+  <li><b>Next best action</b>: rules on top of the models — close likely deals due soon, re-qualify deals the CRM is too optimistic about, visit valuable accounts at risk, collect overdue cash from customers with live pipeline.</li></ul>
+  <h3>Stress testing</h3><p>Scenario levers (win rate, new business, delays of the largest customers, losing the biggest deals, slower payments, market volatility) run through the same simulation in the browser, so the effect on award, invoicing, cash collection and the year-end target gap is visible immediately.</p>
+  <h3>Limits</h3><ul><li>Six-month horizon; long project cycles beyond that are covered by the run-rate, not by individual deals.</li><li>Model quality depends on CRM discipline: if stages and award dates are not maintained, the model learns that — and says so through low weights on stage.</li><li>Backtests are few (two years of snapshots); treat P10–P90 as indicative.</li></ul></div>`;
+};
+init();
+</script>
+</body>
+</html>

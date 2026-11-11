@@ -1,0 +1,18 @@
+{
+  "company": "Your company",
+  "snapshots": [
+    {"path": "../data/historical_pipeline.csv.gz"},
+    {"path": "../data/current_pipeline.csv.gz", "snapshot": "mtime"}
+  ],
+  "colmap": {
+    "snapshot": "Snapshot", "quote_id": "Quotation number", "customer_id": "Customer number",
+    "customer": "Customer name", "project": "Project", "se": "Sales employee", "team": "Team",
+    "product_group": "Product group", "value": "Gross value", "stage_text": "Probability",
+    "doc_status": "Document status", "valid_from": "Valid from", "expected_award": "Expected award date"
+  },
+  "valid_value": "VALID",
+  "groups": ["Group A", "Group B"],
+  "targets": "private/targets.csv",
+  "ses": "private/ses.csv",
+  "out": "private/site"
+}
