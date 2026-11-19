@@ -45,7 +45,11 @@ def pipeline(snap, as_of, targets=None, scored=None):
     teams = []
     tg_team = {}
     if targets is not None and 'team' in targets:
-        tg_team = targets.groupby('team').award_target.sum().to_dict()
+        tt = targets.team.astype(str).str.strip()
+        tg_team = targets.assign(team=tt.where(~tt.isin(['', '0', 'nan', 'None', 'NaN']), 'Unassigned')) \
+            .groupby('team').award_target.sum().to_dict()
+    tmn = L.team.astype(str).str.strip()
+    L = L.assign(team=tmn.where(~tmn.isin(['', '0', 'nan', 'None', 'NaN']), 'Unassigned'))
     for tm, g in L.groupby('team'):
         gw = g[g.stage.isin(WON_STAGES)]
         gq = g[g.stage.isin(HIT_STAGES)]

@@ -6,3 +6,5 @@ __pycache__/
 # demo data is regenerated with: python -m ci.synth
 data/synthetic/*
 !data/synthetic/meta.json
+# demo generator + build scratch: reproduces the private extract formats, so it stays local
+suite/

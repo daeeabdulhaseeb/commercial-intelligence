@@ -1,6 +1,6 @@
 """Build the dashboard bundle and render site/index.html.
 
-  python -m ci.build                       # synthetic demo  -> docs/index.html (public, GitHub Pages)
+  python -m ci.build                       # stand-alone synthetic demo of this layer -> docs/model/index.html
   python -m ci.build --private CONFIG.json # company data    -> private/site/index.html (never committed)
 
 CONFIG.json (private): see private.example.json
@@ -120,6 +120,10 @@ def run(data, out_dir, public=True, label='demo'):
     cc = churn_cur.copy()
     cc['name_'] = cc.cid.map(accdf.name)
     nba = Mo.next_best_actions(scored, cc, ar_c, owners_now)
+    gone = set(data.get('exclude_ses') or [])           # SEs who left: kept in team totals, dropped from SE lists
+    if gone:
+        nba = nba[~nba.se.isin(gone)]
+        se['rows'] = [r for r in se['rows'] if r['se'] not in gone]
     stress = stress_inputs(scored, tim, panel, snap, as_of)
     from . import cash as C
     cash_d = None
@@ -204,22 +208,39 @@ def load_private(cfg):
     parts = []
     cm = cfg.get('colmap', {})
     want = set(cm.values()) if cm else None
-    for sdef in srcs:
+    for fi, sdef in enumerate(srcs):
         p = sdef['path'] if os.path.isabs(sdef['path']) else os.path.join(ROOT, sdef['path'])
-        if p.endswith('.parquet'):
-            raw = pd.read_parquet(p)
-        else:
-            raw = pd.read_csv(p, dtype=str, low_memory=False, usecols=(lambda c: c in want) if want else None)
         lab = sdef.get('snapshot')
         if lab == 'mtime':
             lab = time.strftime('%Y-%m', time.localtime(os.path.getmtime(p)))
             if cfg.get('mtime_is_month_end_of_previous', True):
                 lab = A.ym_add(lab, -1)
-        if lab:
-            raw[cfg.get('colmap', {}).get('snapshot', 'snapshot')] = lab
-        parts.append(raw)
+        scol = cfg.get('colmap', {}).get('snapshot', 'snapshot')
+        if p.endswith('.parquet'):
+            raw = pd.read_parquet(p)
+            if lab:
+                raw[scol] = lab
+            parts.append(raw)
+        elif cfg.get('canonical'):
+            raw = pd.read_csv(p, dtype=str, low_memory=False, usecols=(lambda c: c in want) if want else None)
+            if lab:
+                raw[scol] = lab
+            parts.append(raw)
+        else:   # large extracts: read in chunks, filter and collapse the item lines chunk by chunk (memory-safe)
+            for ch in pd.read_csv(p, dtype=str, usecols=(lambda c: c in want) if want else None, chunksize=300_000):
+                if lab:
+                    ch[scol] = lab
+                parts.append(adapters.sap_pipeline_snapshots(ch, colmap=cfg.get('colmap'), valid_value=cfg.get('valid_value'),
+                                                             groups=cfg.get('groups')).assign(_f=fi))
     raw = pd.concat(parts, ignore_index=True)
-    if cfg.get('canonical'):
+    if not cfg.get('canonical') and not any(str(x.get('path', '')).endswith('.parquet') for x in srcs):
+        # a quotation's lines can straddle two chunks: sum again; later files win for the same month
+        val = raw.groupby(['_f', 'snapshot', 'quote_id']).value.sum()
+        raw = raw.drop_duplicates(['_f', 'snapshot', 'quote_id'], keep='first').set_index(['_f', 'snapshot', 'quote_id'])
+        raw['value'] = val
+        raw = raw.reset_index().sort_values('_f').drop_duplicates(['snapshot', 'quote_id'], keep='last')
+        snap = raw.drop(columns='_f').reset_index(drop=True)
+    elif cfg.get('canonical'):
         snap = raw
         snap['value'] = pd.to_numeric(snap.value)
         snap['stage'] = pd.to_numeric(snap.stage).astype(int)
@@ -247,6 +268,8 @@ def load_private(cfg):
         d['meta']['ar_snapshot'] = lab
     if cfg.get('presets'):
         d['presets'] = cfg['presets']
+    if cfg.get('exclude_ses'):
+        d['exclude_ses'] = cfg['exclude_ses']
     return d
 
 
@@ -262,4 +285,4 @@ if __name__ == '__main__':
         src = os.path.join(ROOT, 'data', 'synthetic')
         if not os.path.exists(os.path.join(src, 'snapshots.csv.gz')):
             synth.save(synth.build(), src)
-        run(synth.load(src), os.path.join(ROOT, 'docs'), public=True, label='demo')
+        run(synth.load(src), os.path.join(ROOT, 'docs', 'model'), public=True, label='demo')   # docs/index.html is the suite menu

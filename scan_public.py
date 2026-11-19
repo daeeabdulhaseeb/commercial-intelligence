@@ -14,7 +14,7 @@ import re
 import sys
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-SKIP_DIRS = {'.git', 'private', '__pycache__', 'vendor', '.ipynb_checkpoints'}
+SKIP_DIRS = {'.git', 'private', '__pycache__', 'vendor', '.ipynb_checkpoints', '_work', 'suite'}   # suite/: git-ignored demo generator (mirrors private formats)
 TEXT_EXT = {'.py', '.md', '.html', '.js', '.json', '.csv', '.txt', '.ps1', '.yml', '.yaml', '.toml', '.cfg', '.gz'}
 
 

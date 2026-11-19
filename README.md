@@ -1,20 +1,43 @@
-# Commercial Intelligence — pipeline, accounts, receivables, predictive forecasting and stress testing
+# B2B Business & Market Intelligence — pipeline, accounts, SE performance, receivables, market coverage, forecasting
 
-**Live demo:** https://daeeabdulhaseeb.github.io/commercial-intelligence/ (synthetic data)
+**Live demo:** https://daeeabdulhaseeb.github.io/commercial-intelligence/ (synthetic company)
 
-A working commercial-intelligence stack for a B2B sales organisation (project and dealer channels, multi-region
-sales teams), built from the reporting and planning cycle I run in my day job: weekly pipeline reviews,
-salesperson scorecards, account reactivation and receivables follow-up. On top of the descriptive layer it adds
-the parts most sales reporting lacks: **a win-probability model, a Monte Carlo award forecast with ranges, an
-account-churn model, next-best actions per salesperson and an interactive stress test.**
+The complete reporting suite I built and run for a B2B HVAC sales organisation (project and dealer channels, seven
+regional sales teams), rebuilt weekly from ERP / CRM extracts and published as static web
+reports. The demo runs **the same report builders** on a fictional company, *Northwind Climate Co.*: every customer,
+salesperson, project and number is generated.
 
-All data in this repository is **synthetic**: a fictional company (*Northwind Climate Co.*) simulated with a small
-behavioural model. The same code runs on a company's own CRM / ERP extracts through a private configuration that
-never leaves the machine (see *Running on real data*).
+![Suite](docs/img/suite.jpg)
 
-![Overview](docs/img/overview.jpg)
+| Report | Business question it answers |
+|---|---|
+| **Weekly Pipeline** | Are we on pace for target? Is there enough quoted and hot? Who has to quote, close or deliver what this week? EVP brief, run-rate (quick-order) analysis, hot list, backlog conversion, dealer programme, SE action lists, with a good / watch / bad read and "how to fix" on each chart |
+| **ASAP – Account Strategy** | Which accounts are new, active, slowing or gone; pipeline coverage per account; ownership transfers; released-accounts (reactivation) programme and watch list; churn risk |
+| **SE Performance** | Each sales engineer's quotations, hot projects, award and invoicing by month; composite score; targets cascaded through each SE's own hit ratio |
+| **Receivables** | Ageing, overdue exposure, collections vs billing, DSO, undelivered orders by team / SE / customer |
+| **Market Coverage & Leads** | Which construction projects are in the HVAC buying window, which we won, quoted or never touched, who owns each lead, what changed this week, and where the market needs more SEs |
+| **Market Intelligence** | The project market by region and sector, known contractors vs white space, market projects cross-referenced to our pipeline, contractor award tracker |
+| **Forecast & Stress Test** | Win-probability model vs CRM stage, Monte Carlo award forecast with backtests, churn model, next-best actions, interactive stress test |
 
-## What it does
+Each report respects the viewer's role (EVP / sales ops see everything, a manager their team); in the demo the
+"view as" switch shows each view. In production the site sits behind company e-mail sign-in with an access log.
+
+![Weekly pipeline](docs/img/weekly.jpg)
+![Market coverage](docs/img/coverage.jpg)
+
+### How the demo is built
+
+A local generator (kept out of this repository, because it reproduces the private extract layouts) simulates customers (loyalty, payment habit, churn), sales engineers (skill, joining / leaving),
+quotations with stage paths, award-date slippage and quick orders, invoicing against backlog, receivables and
+collections, ownership transfers and a construction-project market, and writes them in the layouts of the real
+extracts (C4C pipeline lines and monthly snapshots, invoicing, customer master, AR ageing, collections, project
+database export). The build then runs the production builders (kept in a private repository) on that data with
+git disabled and a demo sign-in, re-brands the pages, renames internal programme labels, and assembles `docs/`.
+`scan_public.py` checks every published file against the private protected-term list before anything is pushed.
+
+## The predictive layer
+
+### What it does
 
 | Tab | Business question | How |
 |---|---|---|
@@ -26,17 +49,16 @@ never leaves the machine (see *Running on real data*).
 | **Predictive** | What will we actually win? | Win-probability model vs CRM stage %, calibration, drivers, forecast backtests, churn model, next-best actions |
 | **Stress test** | What if the market turns? | Live Monte Carlo in the browser: win-rate shock, fewer new projects, delays of the biggest customers, losing the largest deals, slower payments → award, invoicing, cash and year-end target gap |
 
-## Results on the demo data (out-of-time)
+### Results on the demo company (out-of-time)
 
 | | Model | CRM stage % |
 |---|---|---|
-| Ranking quality, 6-month win (AUC) | **0.83** | 0.74 |
-| Probability error (Brier, lower is better) | **0.166** | 0.197 |
-| Expected value vs value actually won (test window) | **0.94×** | 1.55× |
-| 6-month award forecast error, 3 backtests | **+14%, +11%, −17%** | +41%, +33%, +6% |
+| Ranking quality, 6-month win (AUC) | **0.89** | 0.71 |
+| Probability error (Brier, lower is better) | **0.093** | 0.152 |
+| Expected value vs value actually won (test window) | **1.26×** | 3.29× |
+| 6-month award forecast (P50) vs actual, 3 backtests | **−4%, +9%, +38%** | |
 
-The churn model ranks accounts that go quiet within six months with AUC 0.86; the riskiest fifth of active accounts
-contains 57% of those that actually go quiet.
+The churn model ranks accounts that go quiet within six months with AUC 0.70 (simple recency rule: 0.67).
 
 On a real two-year history of monthly pipeline snapshots the gap between model and CRM stage was considerably
 larger than on this demo — stage percentages that are not maintained rigorously carry little signal, while the
@@ -86,7 +108,7 @@ delivery-based invoicing and credit-term-based payment.
 ```bash
 pip install -r requirements.txt
 python -m ci.synth          # generate the synthetic company (seeded, deterministic)
-python -m ci.build          # models + dashboard -> docs/index.html
+python -m ci.build          # this layer on its own -> docs/model/index.html
 ```
 
 ## Running on real data
@@ -105,7 +127,7 @@ python scan_public.py       # pre-push check: fails if any customer / salesperso
 ci/schema.py      canonical data model          ci/analytics.py   KPIs per tab
 ci/synth.py       synthetic company generator   ci/models.py      win probability, forecast, churn, actions
 ci/adapters.py    ERP / CRM extract -> schema   ci/build.py       build pipeline + HTML rendering
-ci/template.html  dashboard (vanilla JS + Chart.js)                docs/              GitHub Pages output
+ci/template.html  dashboard (vanilla JS + Chart.js)                docs/              GitHub Pages output (the suite)
 scan_public.py    pre-push privacy scan          data/synthetic/   generated demo data
 ```
 

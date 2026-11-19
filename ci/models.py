@@ -320,16 +320,18 @@ def next_best_actions(cur_q, churn_cur, ar_open, owners_now, max_per_se=8):
     q['exp'] = q.value * q.p_win
     # 1. close: high probability, award date within 2 months
     thr = max(0.2, min(0.5, float(q.p_win.quantile(0.97)))) if len(q) else 0.5
-    for r in q[(q.p_win >= thr) & (q.to_ead_m <= 2)].itertuples():
+    close = q[(q.p_win >= thr) & (q.to_ead_m <= 2)]
+    for r in close.itertuples():
         when = (f'award date {r.expected_award[:7]}' if r.to_ead_m >= 0
                 else f'award date {r.expected_award[:7]} has passed - confirm PO timing')
         acts.append((r.se, 'Close', r.exp, f'Close {r.quote_id} ({r.customer}): {r.p_win:.0%} likely, {when}'))
     # 2. re-qualify: CRM stage much more optimistic than the model on large deals
-    gap = q[(q.stage >= 50) & (q.stage / 100 - q.p_win >= 0.3) & (q.value >= q.value.quantile(0.75))]
+    gap = q[(q.stage >= 50) & (q.stage / 100 - q.p_win >= 0.3) & (q.value >= q.value.quantile(0.75))
+            & ~q.quote_id.isin(close.quote_id)]                       # one action per quotation
     for r in gap.itertuples():
         acts.append((r.se, 'Re-qualify', r.value * (r.stage / 100 - r.p_win),
                      f'Re-qualify {r.quote_id} ({r.customer}): stage {r.stage}% but model {r.p_win:.0%} '
-                     f'({int(r.ead_slips)} date slips)'))
+                     + (f'(award date moved {int(r.ead_slips)}×)' if r.ead_slips else '(no date change yet)')))
     # 3. retain: valuable active accounts at risk of going quiet
     if churn_cur is not None and len(churn_cur):
         cthr = max(0.5, float(churn_cur.p_churn.quantile(0.8)))
