@@ -308,6 +308,7 @@ tr.clickable:hover td{background:var(--surface2)}
   <span class="nav-link" onclick="showPage('accanalysis',this)">Account analysis</span>
   <span class="nav-link" onclick="showPage('openbox',this)">Release pool</span>
   <span class="nav-link" id="nav-analytics" onclick="showPage('analytics',this)">Analytics</span>
+  <span class="nav-link" id="nav-cvm" onclick="showPage('cvm',this)">Customer value</span>
   <span class="nav-updated" id="last-updated"></span>
   <span id="nav-user" style="font-size:11px;color:var(--text2);margin-left:8px;white-space:nowrap;padding:0 4px;background:var(--accent-light);border-radius:4px"></span>
   <button onclick="DemoAuth.logout()" style="font-size:11px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text2);cursor:pointer;margin-left:6px;white-space:nowrap">Sign out</button>
@@ -319,6 +320,8 @@ tr.clickable:hover td{background:var(--surface2)}
   <button type="button" id="rb-reset">All months</button>
   <span class="rb-note" id="rb-note">Applies to Home and Analytics</span>
 </div>
+
+<div id="page-cvm" class="page" style="padding:0"><iframe id="cvm-frame" data-src="customer_value.html" title="Customer value" style="width:100%;height:calc(100vh - 52px);border:0;display:block"></iframe></div>
 
 <!-- ANALYTICS -->
 <div id="page-analytics" class="page">
@@ -1158,6 +1161,7 @@ function showPage(id,el){
     if(id==='accanalysis' && !window._aaInit) window._aaPending=true;
     ensureAccounts();
   }
+  if(id==='cvm'){var cf=document.getElementById('cvm-frame');if(cf&&!cf.getAttribute('src'))cf.setAttribute('src',cf.dataset.src);}
   if(id==='analytics' && typeof ASAPAnalytics!=='undefined'){ try{ASAPAnalytics.init();}catch(e){console.error('analytics',e);} }
   var rb=document.getElementById('rangebar');if(rb)rb.classList.toggle('hide',!(id==='home'||id==='analytics'));
 }

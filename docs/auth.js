@@ -40,14 +40,25 @@ var DemoAuth = (function () {
     if (document.getElementById('demo-pin-help')) return;
     var b = document.createElement('button');
     b.id = 'demo-pin-help';
-    b.textContent = '? Demo PINs';
+    b.textContent = '\u{1F464} View as: ' + (_session && _session.label ? _session.label : 'EVP');
     b.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:100000;background:#111827;color:#fff;border:0;border-radius:20px;' +
       'padding:8px 13px;font:600 12px "DM Sans",-apple-system,Segoe UI,sans-serif;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.2)';
     var p = document.createElement('div');
     p.style.cssText = 'position:fixed;right:14px;bottom:56px;z-index:100000;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px;' +
       'width:340px;max-width:calc(100vw - 28px);box-shadow:0 10px 30px rgba(0,0,0,.15);display:none;font-family:"DM Sans",-apple-system,Segoe UI,sans-serif;color:#111827';
-    p.innerHTML = '<div style="font-size:13px;font-weight:600;margin-bottom:4px">Demo PINs</div>' +
-      '<div style="font-size:11px;color:#6b7280;margin-bottom:8px">Synthetic company – sign in as any role to see what that person sees.</div>' + pinTable();
+    p.innerHTML = '<div style="font-size:13px;font-weight:600;margin-bottom:4px">View the dashboards as</div>' +
+      '<div style="font-size:11px;color:#6b7280;margin-bottom:8px">Synthetic company. Each role sees only its own teams and tabs, as in production.</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">' + ROLES.map(function (r) {
+        var on = _session && _session.role === r.value;
+        return '<button type="button" data-role="' + r.value + '" style="font:600 11.5px inherit;padding:5px 9px;border-radius:14px;cursor:pointer;border:1px solid ' +
+          (on ? '#1d4ed8;background:#1d4ed8;color:#fff' : '#d1d5db;background:#fff;color:#111827') + '">' + r.label + '</button>';
+      }).join('') + '</div>' +
+      '<div style="font-size:12px;font-weight:600;margin-bottom:4px">PINs for the locked tabs inside the reports</div>' + pinTable();
+    p.addEventListener('click', function (e) {
+      var t = e.target.closest ? e.target.closest('button[data-role]') : null; if (!t) return;
+      var r = ROLES.filter(function (x) { return x.value === t.getAttribute('data-role'); })[0];
+      if (r) { _save({ token: 'demo', role: r.value, team: r.team, label: r.label }); location.reload(); }
+    });
     b.onclick = function () { p.style.display = p.style.display === 'none' ? 'block' : 'none'; };
     document.body.appendChild(p);
     document.body.appendChild(b);
@@ -115,11 +126,12 @@ var DemoAuth = (function () {
     opts = opts || {};
     _onLogin = opts.onLogin || null;
     var go = function () {
-      helpButton();
       _load();
+      // public demo: no sign-in screen - opens as EVP (everything visible); 'View as' switches role
+      if (!_session || !_session.role) { var r0 = ROLES[0]; _save({ token: 'demo', role: r0.value, team: r0.team, label: r0.label }); }
+      helpButton();
       if (opts.noLogin) return;
-      if (_session && _session.role) { if (_onLogin) _onLogin(_session); }
-      else _renderLoginUI();
+      if (_onLogin) _onLogin(_session);
     };
     if (document.body) go(); else document.addEventListener('DOMContentLoaded', go);
   }
@@ -131,7 +143,7 @@ var DemoAuth = (function () {
   function getTeam() { if (!_session || FULL_ACCESS.indexOf(_session.role) >= 0 || _session.role === 'se') return null; return _session.team || null; }
   function getTeams() { if (!_session || FULL_ACCESS.indexOf(_session.role) >= 0 || _session.role === 'se') return null; var t = _session.team; return Array.isArray(t) ? t : (t ? [t] : null); }
   function canSee(tab) { if (!_session) return false; var a = TAB_ACCESS[tab]; return !a || a.indexOf(_session.role) >= 0; }
-  function logout() { _clear(); location.reload(); }
+  function logout() { var p = document.getElementById('demo-pin-help'); if (p) p.click(); }   // demo: 'Sign out' opens the role switcher
   var CL = {};
   function loadClaims(cb) { cb(CL); }
   function saveClaim(no, by, d, t, cb) { CL[no] = { claimed_by: by, claimed_date: d, claimed_team: t }; if (cb) cb({ ok: true }); }
